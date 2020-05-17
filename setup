@@ -1,0 +1,19 @@
+set -Eeuo pipefail
+
+if [ ! -d data/ ]; then
+	mkdir -p data
+fi
+
+if [ ! -d data/txt/ ]; then
+	mkdir -p data/txt
+fi
+
+if [ ! -d data/mat ]; then
+	mkdir -p data/mat
+fi
+
+cd utils
+
+python3 hic2matrix.py
+
+rm -r data/txt/
