@@ -5,6 +5,6 @@
 3. Start `R`. Select `TopDom.R` for this project.
 ```R
 > source("utils/TopDom.R")
-> TopDom(matrix.file="data/mat/[filename].matrix", window.size=10, outFile=[filename])
+> TopDom(matrix.file="data/mat/[filename].matrix", window.size=10, outFile="[filename]")
 ```
 4. There will be 3 output file. Usually the .bed file would be enough for our project.
