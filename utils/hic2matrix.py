@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import math
 
 
 def hic2txt(hic, txt, ch, resolution=10000):
@@ -12,7 +13,7 @@ def hic2txt(hic, txt, ch, resolution=10000):
     :param resolution: int, default: 25000
     """
     juicer = 'juicer_tools_1.11.04_jcuda.0.8.jar'
-    cmd = f'java -jar {juicer} dump observed NONE {hic} {ch} {ch} BP {resolution} {txt}'
+    cmd = f'java -jar {juicer} dump observed KR {hic} {ch} {ch} BP {resolution} {txt}'
     os.system(cmd)
 
 
@@ -33,6 +34,9 @@ def txt2matrix(txt, matrix, ch, length, resolution=10000):
     for line in f:
         p1, p2, v = line.strip().split()
         p1, p2, v = int(p1), int(p2), float(v)
+
+        if math.isnan(v):
+	    continue
 
         if max(p1, p2) >= n_bins * resolution:
             continue
