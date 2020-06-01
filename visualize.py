@@ -35,134 +35,128 @@ def get_size(ch):
     return sizes[ch]
 
 
-def get_fold_enrichment(df, tp="domain", num_div=5):
+def has_intersection(domain1, domain2):
+    return domain1[0] <= domain2[1] and domain1[1] >= domain2[0]
+
+
+def get_intersection(domain1, domain2):
+    if not has_intersection(domain1, domain2):
+        return 0
+    lower = max(domain1[0], domain2[0])
+    upper = min(domain1[1], domain2[1])
+    return upper-lower
+
+
+def get_fold_enrichment(df, tp="domain", num_div=5, resol=50):
     chromes = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5',
                'chr6', 'chr7', 'chr8', 'chr9', 'chr10',
                'chr11', 'chr12', 'chr13', 'chr14', 'chr15',
                'chr16', 'chr17', 'chr18', 'chr19', 'chr20',
                'chr21', 'chr22', 'chrX', 'chrY']
-    df_tad = pd.read_csv("data/tad/hspc_10kb.csv")
+    df_tad = pd.read_csv("data/tad/hspc_{}kb.csv".format(resol))
     df_tad = df_tad.loc[df_tad['type'] == tp]
-    length_tad = sum(df_tad['end'].values - df_tad['start'].values)
 
     # Calculate expected value
     length = sum(df['end'].values - df['start'].values)
     exp = length / get_size('all')
-    # exp = length / length_tad
 
     # Calculate observed value
-    fold_enrichment = None
-    if num_div == 5:
-        obs = np.array([0, 0, 0, 0, 0], dtype='f')
-        num_chrs = 0
-        for ch in chromes:
-            region = int(get_size(ch)/5)
-            df_ch = df.loc[df['chrom'] == ch]
-            df_tad_ch = df_tad.loc[df_tad['chrom'] == ch]
-            if len(df_ch) > 1:
-                list_signal = np.asarray([df_ch['start'], df_ch['end']]).T
-            else:
-                list_signal = np.asarray([df_ch['start'].values, df_ch['end'].values]).T
-            if len(list_signal) == 0:
-                continue
-            num_chrs += 1
-            list_tad = np.asarray([df_tad_ch['start'], df_tad_ch['end']]).T
-            j = 0
-            div = 0
-            obs_ch = np.array([0, 0, 0, 0, 0], dtype='f')
-            for i, boundary in enumerate(list_tad):
-                while list_signal[j][1] < boundary[0]:
-                    j += 1
-                    if j == len(list_signal):
-                        j = -1
-                        break
-                if j < 0:
+    obs = np.array(np.zeros(num_div), dtype='f')
+    num_chrs = 0
+
+    for ch in chromes:
+        df_ch = df.loc[df['chrom'] == ch]
+        df_tad_ch = df_tad.loc[df_tad['chrom'] == ch]
+
+        if len(df_ch) > 1:
+            list_signal = np.asarray([df_ch['start'], df_ch['end']]).T
+        else:
+            list_signal = np.asarray([df_ch['start'].values, df_ch['end'].values]).T
+
+        if len(list_signal) == 0:
+            continue
+        num_chrs += 1
+
+        list_tad = np.asarray([df_tad_ch['start'], df_tad_ch['end']]).T
+        obs_ch = np.array(np.zeros(num_div), dtype='f')
+
+        for i, domain in enumerate(list_tad):
+
+            region = (domain[1] - domain[0]) / num_div
+            obs_reg = np.array(np.zeros(num_div), dtype='f')
+            j = -1
+
+            for idx, signal in enumerate(list_signal):
+                if has_intersection(signal, domain):
+                    j = idx
                     break
-                if list_signal[j][0] > boundary[1]:
-                    continue
-                lower = max(list_signal[j][0], boundary[0])
-                upper = min(list_signal[j][1], boundary[1])
-                if region * (div + 1) > upper:
-                    obs_ch[div] += upper - lower
-                elif region * (div + 1) < lower:
-                    div += 1
-                    obs_ch[div] += upper - lower
-                else:
-                    obs_ch[div] += region * (div + 1) - lower
-                    div += 1
-                    obs_ch[div] += upper - region * (div + 1)
 
-            obs_ch = obs_ch/region
-            obs += obs_ch
-        obs /= num_chrs
-        fold_enrichment = obs / exp
-
-    elif num_div == 1:
-        obs = 0
-        num_chrs = 0
-        for ch in chromes:
-            region = int(get_size(ch))
-            df_ch = df.loc[df['chrom'] == ch]
-            df_tad_ch = df_tad.loc[df_tad['chrom'] == ch]
-            if len(df_ch) > 1:
-                list_signal = np.asarray([df_ch['start'], df_ch['end']]).T
-            else:
-                list_signal = np.asarray([df_ch['start'].values, df_ch['end'].values]).T
-            if len(list_signal) == 0:
-                continue
-            num_chrs += 1
-            list_tad = np.asarray([df_tad_ch['start'], df_tad_ch['end']]).T
-            j = 0
-            obs_ch = 0
-            for i, boundary in enumerate(list_tad):
-                while list_signal[j][1] < boundary[0]:
-                    j += 1
-                    if j == len(list_signal):
-                        j = -1
-                        break
-                if j < 0:
+            while has_intersection(list_signal[j], domain):
+                for k in range(num_div):
+                    start = domain[0] + k * region
+                    obs_reg[k] += get_intersection(list_signal[j], [start, start+region])
+                j += 1
+                if j == len(list_signal):
+                    j = -1
                     break
-                if list_signal[j][0] > boundary[1]:
-                    continue
-                lower = max(list_signal[j][0], boundary[0])
-                upper = min(list_signal[j][1], boundary[1])
-                obs_ch += upper - lower
 
-            obs_ch = obs_ch/region
-            obs += obs_ch
-        obs /= num_chrs
-        fold_enrichment = obs / exp
+            obs_reg = obs_reg / region
+            obs_ch += obs_reg
+            if j < 0:
+                continue
+
+        obs += obs_ch / len(list_tad)
+    obs /= num_chrs
+    fold_enrichment = obs / exp
 
     return fold_enrichment
 
 
-if __name__ == '__main__':
+def plot_enrichment(div=5, resol=25):
     # Read the data-frame
     df_great_canyon = pd.read_excel("data/canyons/hcd34_canyons_sorted.xls", sheet_name="grant_canyons")
     df_short_canyon = pd.read_excel("data/canyons/hcd34_canyons_sorted.xls", sheet_name="short_canyons")
     df_ctcf = pd.read_csv("data/ctcf/ctcf.csv")
 
     # Obtain the fold enrichment
-    div = 1
-    for tp in ['domain', 'boundary', 'gap']:
-        gc_fold_enrichment = get_fold_enrichment(df_great_canyon, tp, div)
-        sc_fold_enrichment = get_fold_enrichment(df_short_canyon, tp, div)
-        ctcf_fold_enrichment = get_fold_enrichment(df_ctcf, tp, div)
+    # ['domain', 'boundary', 'gap']
+    for tp in ['domain']:
+        gc_fold_enrichment = get_fold_enrichment(df_great_canyon, tp, div, resol)
+        sc_fold_enrichment = get_fold_enrichment(df_short_canyon, tp, div, resol)
+        ctcf_fold_enrichment = get_fold_enrichment(df_ctcf, tp, div, resol)
 
         # Make the bar chart
         ind = np.arange(div)
         width = 0.25
-        plt.bar(ind, ctcf_fold_enrichment, width, label='CTCF')
+        # plt.bar(ind, ctcf_fold_enrichment, width, label='CTCF')
+        # plt.bar(ind + 2 * width, sc_fold_enrichment, width, label='Short Canyon')
         plt.bar(ind + width, gc_fold_enrichment, width, label='Grant Canyon')
-        plt.bar(ind + 2*width, sc_fold_enrichment, width, label='Short Canyon')
 
         plt.ylabel('Fold Enrichment')
         plt.title('Fold Enrichment by Divided Normalized TAD {} Region'.format(tp.capitalize()))
-        if div == 5:
-            plt.xticks(ind + width / 2, ('Border 20%', 'Mid 20%', 'Central 20%', 'Mid 20%', 'Border 20%'))
-        elif div == 1:
-            plt.xticks(ind + width / 2, ('Total'))
 
         plt.legend(loc='upper left')
-        plt.savefig("visualization_{}_{}.png".format(tp, div))
+        plt.savefig("visualization_{}_{}.png".format(resol, div))
         plt.show()
+
+
+def plot_length(resol=25, bins=50):
+    # Read the data-frame
+    df_tad = pd.read_csv("data/tad/hspc_{}kb.csv".format(resol))
+    df_tad = df_tad.loc[df_tad['type'] == "domain"]
+    length_tad = df_tad['end'].values - df_tad['start'].values
+
+    # Obtain the histgram
+    plt.hist(length_tad, bins=bins)
+    plt.axvline(length_tad.mean(), color='k', linestyle='dashed', linewidth=1)
+    min_ylim, max_ylim = plt.ylim()
+    plt.text(length_tad.mean() * 1.1, max_ylim * 0.9, 'Mean: {:.2f}'.format(length_tad.mean()))
+
+    plt.ylabel('Count')
+    plt.title('Count of lengths of TAD')
+    plt.savefig("length_distribution_{}kb.png".format(resol))
+    plt.show()
+
+
+if __name__ == '__main__':
+    plot_enrichment(100, 25)
